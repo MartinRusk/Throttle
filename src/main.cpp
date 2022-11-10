@@ -50,7 +50,7 @@ enum repeat_t
 // Create Joystick
 Joystick_ Joystick(JOYSTICK_DEFAULT_REPORT_ID,
                    JOYSTICK_TYPE_JOYSTICK,
-                   12, 0,                // Buttons, HAT Switches
+                   0, 0,                // Buttons, HAT Switches
                    true, true, false,    // X,Y,Z Axes
                    true, true, false,    // Rx,Ry,Rz Axes
                    false, false,         // Rudder, Throttle
@@ -200,9 +200,9 @@ void setupLEDs()
     // init loop thru all LEDs
     writeLEDs(0xFFFF);
     delay(500);
-    for (uint8_t i = 0; i < NUM_LEDS; ++i) // LED0 not connected
+    for (uint8_t i = 0; i < NUM_LEDS; ++i) 
     {
-        writeLEDs(1 << (i + 1));
+        writeLEDs(1 << (i + 1)); // LED0 not connected
         delay(100);
     }
     writeLEDs(0x0000);
@@ -210,7 +210,7 @@ void setupLEDs()
 void handleLEDs()
 {
     if (Serial.available() > NUM_LEDS)
-    { // full dataword available from RSG driver
+    {   // full dataword available from RSG driver
         // capture full databurst and parse through it
         String leddata = Serial.readStringUntil('\n');
         uint16_t leds = 0;
@@ -218,7 +218,7 @@ void handleLEDs()
         {
             if (leddata.charAt(i + 1) == '1')
             {
-                leds |= (1 << (i + 1));
+                leds |= (1 << (i + 1)); // LED0 not connected
             }
         }
         writeLEDs(leds);
@@ -262,8 +262,8 @@ void setup()
     // Set Range Values
     Joystick.setXAxisRange(0, 1023);
     Joystick.setYAxisRange(0, 1023);
-    Joystick.setRxAxisRange(-1023, 1023);
-    Joystick.setRyAxisRange(-1023, 1023);
+    Joystick.setRxAxisRange(0, 1023);
+    Joystick.setRyAxisRange(0, 1023);
     // Initialize Joystick, disable AutoSendState
     Joystick.begin(false);
 }
@@ -304,17 +304,17 @@ void loop()
 #pragma GCC diagnostic pop
 
     // handle devices
-    handleSwitch(&Switches[swi++], "SW_BRAKE_RELEASE", !digitalRead(0));
-    handleSwitch(&Switches[swi++], "SW_BRAKE_SET", !digitalRead(1));
-    handleSwitch(&Switches[swi++], "SW_NN1", !digitalRead(2));
-    handleSwitch(&Switches[swi++], "SW_NN2", !digitalRead(3));
-    handleButton(&Buttons[btn++], "BTN_PAUSE", single, !digitalRead(4));
-    handleButton(&Buttons[btn++], "BTN_WARP", single, !digitalRead(5));
-    handleButton(&Buttons[btn++], "BTN_VIEW", single, !digitalRead(6));
-    handleSwitch(&Switches[swi++], "SW_NN3", !digitalRead(7));
-    handleEncoder(&Encoders[enc++], "ENC_ZOOM_IN", "ENC_ZOOM_OUT", !digitalRead(8), !digitalRead(9), 4);
-    handleButton(&Buttons[btn++], "BTN_ZOOM_PUSH", single, !digitalRead(10));
-    handleButton(&Buttons[btn++], "BTN_PAN_PUSH", single, !digitalRead(11));
+    handleSwitch(&Switches[swi++], "SW_BRAKE_SET", !digitalRead(4));
+    handleSwitch(&Switches[swi++], "SW_BRAKE_RELEASE", !digitalRead(5));
+    handleSwitch(&Switches[swi++], "SW_NN1", !digitalRead(6));
+    handleSwitch(&Switches[swi++], "SW_NN2", !digitalRead(7));
+    handleButton(&Buttons[btn++], "BTN_PAUSE", single, !digitalRead(1));
+    handleButton(&Buttons[btn++], "BTN_WARP", single, !digitalRead(2));
+    handleButton(&Buttons[btn++], "BTN_VIEW", single, !digitalRead(3));
+    handleSwitch(&Switches[swi++], "SW_NN3", !digitalRead(0));
+    handleEncoder(&Encoders[enc++], "ENC_ZOOM_IN", "ENC_ZOOM_OUT", !digitalRead(9), !digitalRead(10), 4);
+    handleButton(&Buttons[btn++], "BTN_ZOOM_PUSH", single, !digitalRead(11));
+    handleButton(&Buttons[btn++], "BTN_PAN_PUSH", single, !digitalRead(8));
 
 #if DEBUG
     // show number of used input devices and halt program in case of error since memory is corrupted
@@ -348,12 +348,11 @@ void loop()
     }
 #endif
 
+
     // handle joystick
-    Joystick.setXAxis(analogRead(A0));
-    Joystick.setYAxis(analogRead(A1));
-    Joystick.setRxAxis(analogRead(A2));
-    Joystick.setRyAxis(analogRead(A3));
-    Joystick.pressButton(!digitalRead(0));
+    Joystick.setXAxis(1023-analogRead(A0));
+    Joystick.setYAxis(1023-analogRead(A1));
+    Joystick.setRxAxis(analogRead(A3));
+    Joystick.setRyAxis(analogRead(A2));
     Joystick.sendState();
-    delay(10);
 }
