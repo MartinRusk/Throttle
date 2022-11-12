@@ -2,8 +2,8 @@
 #include "Joystick.h"
 
 // configuration
-#define VERSION "3.1.2"
-#define BOARD_ID "0100"
+#define VERSION "3.2.0"
+#define BOARD_ID "0001"
 
 // printout debug data
 #define DEBUG 0
@@ -50,7 +50,7 @@ enum repeat_t
 // Create Joystick
 Joystick_ Joystick(JOYSTICK_DEFAULT_REPORT_ID,
                    JOYSTICK_TYPE_JOYSTICK,
-                   0, 0,                // Buttons, HAT Switches
+                   0, 0,                 // Buttons, HAT Switches
                    true, true, false,    // X,Y,Z Axes
                    true, true, false,    // Rx,Ry,Rz Axes
                    false, false,         // Rudder, Throttle
@@ -218,10 +218,11 @@ void handleLEDs()
         {
             if (leddata.charAt(i + 1) == '1')
             {
-                leds |= (1 << (i + 1)); // LED0 not connected
+                leds |= (1 << i); 
             }
         }
-        writeLEDs(leds);
+        
+        writeLEDs(leds << 1);
     }
 }
 
@@ -273,7 +274,7 @@ void loop()
     // keep alive for RSG connection
     if (millis() >= tmr_next)
     { // timer interval for keepalive
-        Serial.write("####RealSimGear#mrusk-G1000XFD2#1#");
+        Serial.write("####RealSimGear#mrusk-SW1#1#");
         Serial.write(VERSION);
         Serial.write("#");
         Serial.write(BOARD_ID);
@@ -304,8 +305,8 @@ void loop()
 #pragma GCC diagnostic pop
 
     // handle devices
-    handleSwitch(&Switches[swi++], "SW_BRAKE_SET", !digitalRead(4));
-    handleSwitch(&Switches[swi++], "SW_BRAKE_RELEASE", !digitalRead(5));
+    handleSwitch(&Switches[swi++], "SW_BRAKE_RELEASE", !digitalRead(4));
+    handleSwitch(&Switches[swi++], "SW_BRAKE_SET", !digitalRead(5));
     handleSwitch(&Switches[swi++], "SW_NN1", !digitalRead(6));
     handleSwitch(&Switches[swi++], "SW_NN2", !digitalRead(7));
     handleButton(&Buttons[btn++], "BTN_PAUSE", single, !digitalRead(1));
