@@ -1,6 +1,8 @@
 This repository hosts the firmware and design files for the mrusk Throttle device. 
 
-3D Design available at Printables: https://www.printables.com/de/model/315603-desktop-twin-engine-throttle-for-flight-simulation
+3D Design available at Printables: 
+
+https://www.printables.com/de/model/315603-desktop-twin-engine-throttle-for-flight-simulation
 
 Software is (c) by mrusk.
 
