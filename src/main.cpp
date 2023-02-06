@@ -1,359 +1,302 @@
 #include <Arduino.h>
-#include "Joystick.h"
+#include <XPLDirect.h>
+#include <Joystick.h>
+#include <Switch.h>
+#include <Button.h>
+#include <Encoder.h>
+#include <LedShift.h>
+#include <SoftTimer.h>
+#include <AnalogIn.h>
 
-// configuration
-#define VERSION "3.2.0"
-#define BOARD_ID "0001"
+XPLDirect xp(&Serial);
 
-// printout debug data
-#define DEBUG 0
+Switch swMode(0);
+Button butPause(1);
+Button butWarp(2);
+Button butView(3);
+Button butBrakeRelease(4);
+Button butBrakeSet(5);
+Button butFlapsUp(6);
+Button butFlapsDown(7);
+Button butStick(8);
+Encoder encZoom(9, 10, 11, 4);
+LedShift leds(16, 15, 14);
 
-// hardware setup
-#define NUM_LEDS 6
-#define DM13A_DAI 16
-#define DM13A_DCK 15
-#define DM13A_LAT 14
-#define MAX_BUTTONS 5  // maximum number of buttons
-#define MAX_SWITCHES 5 // maximum number of switches
-#define MAX_ENCODERS 1 // maximum number of encoders
+#define LED_BRAKE_REL 1
+#define LED_BRAKE_SET 2
+#define LED_PAUSE 3
+#define LED_WARP 4
+#define LED_VIEW 5
+#define LED_CAMERA 6
 
-// delay for keep alive message [ms]
-#define KEEPALIVE_DELAY 500
-// delay for key repeat [ms]
-#define REPEAT_DELAY 250
-// delay for key debouncing [cycles]
-#define DEBOUNCE_DELAY 50
-
-// storage for input devices
-struct button_t
-{
-    uint8_t _state;
-} Buttons[MAX_BUTTONS];
-
-struct switch_t
-{
-    uint8_t _state;
-} Switches[MAX_SWITCHES];
-
-struct encoder_t
-{
-    uint8_t _state;
-    int8_t _count;
-} Encoders[MAX_ENCODERS];
-
-enum repeat_t
-{
-    single,
-    repeat
-};
+AnalogIn stickX(A0, true, 50);
+AnalogIn stickY(A1, true, 50);
+AnalogIn sliderLeft(A2, false, 10);
+AnalogIn sliderRight(A3, false, 10);
 
 // Create Joystick
 Joystick_ Joystick(JOYSTICK_DEFAULT_REPORT_ID,
                    JOYSTICK_TYPE_JOYSTICK,
                    0, 0,                 // Buttons, HAT Switches
-                   true, true, false,    // X,Y,Z Axes
-                   true, true, false,    // Rx,Ry,Rz Axes
-                   false, false,         // Rudder, Throttle
+                   true, true, false,    // X,Y,Z Axes (pos)
+                   true, true, false,    // Rx,Ry,Rz Axes (rot)
+                   false, false,         // Rudder, Throttle (T1/T2)
                    false, false, false); // Accelerator, Brake, Steering
 
-// keep alive timer
-uint32_t tmr_next = 0;
-// repeat timer
-uint32_t tmr_rep = 0;
+SoftTimer loopTimer(10);
 
-#if DEBUG
-// counter to check runtime behavior
-uint16_t count = 0;
-bool init_mark = false;
-#endif
+// datarefs
+long int refPaused;
+long int refGroundSpeed;
+float refParkingBrakeRatio;
 
-// Buttons
-void initButton(button_t *but)
-{
-    but->_state = 0;
-}
-void handleButton(button_t *but, const char *name, repeat_t rep, bool input)
-{
-    if (input)
-    {
-        if (but->_state == 0)
-        {
-            Serial.write(name);
-            Serial.write("=1\n");
-            but->_state = DEBOUNCE_DELAY;
-            if (rep == repeat)
-            {
-                tmr_rep = millis() + REPEAT_DELAY;
-            }
-        }
-        if (rep == repeat)
-        {
-            if (millis() > tmr_rep)
-            {
-                Serial.write(name);
-                Serial.write("=1\n");
-                tmr_rep += REPEAT_DELAY;
-            }
-        }
-    }
-    else if (but->_state > 0)
-    {
-        if (--but->_state == 0)
-        {
-            Serial.write(name);
-            Serial.write("=0\n");
-        }
-    }
-}
+float refPilotsHeadX;
+float refPilotsHeadY;
+float refPilotsHeadZ;
+float refPilotsHeadPsi;
+float refPilotsHeadThe;
+float refPilotsHeadPhi;
 
-// Switches
-void initSwitch(switch_t *swi)
-{
-    swi->_state = 0;
-}
-void handleSwitch(switch_t *swi, const char *name, bool input)
-{
-    if (input && (swi->_state == 0))
-    {
-        Serial.write(name);
-        Serial.write(".SW.ON\n");
-        swi->_state = DEBOUNCE_DELAY;
-    }
-    if (!input && (swi->_state > 0))
-    {
-        if (--swi->_state == 0)
-        {
-            Serial.write(name);
-            Serial.write(".SW.OFF\n");
-        }
-    }
-}
+// commands
+int cmdPause;
+int cmdWarp;
+int cmdViewDefault;
+int cmdViewForwardNothing;
+int cmdViewChase;
+int cmdSpeedBrakeUp;
+int cmdSpeedBrakeDown;
+int cmdBackward;
+int cmdForward;
+int cmdLeft;
+int cmdLeftFast;
+int cmdLeftSlow;
+int cmdRight;
+int cmdRightFast;
+int cmdRightSlow;
+int cmdUp;
+int cmdUpFast;
+int cmdUpSlow;
+int cmdDown;
+int cmdDownFast;
+int cmdDownSlow;
 
-// Encoders
-void initEncoder(encoder_t *enc)
-{
-    enc->_count = 0;
-    enc->_state = 0;
-}
-void handleEncoder(encoder_t *enc, const char *up, const char *dn, bool input1, bool input2, uint8_t pulses)
-{
-    // collect new state
-    enc->_state = ((enc->_state & 0x03) << 2) | (input2 << 1) | input1;
-    // evaluate state change
-    switch (enc->_state)
-    {
-    case 0:
-    case 5:
-    case 10:
-    case 15:
-        break;
-    case 1:
-    case 7:
-    case 8:
-    case 14:
-        enc->_count++;
-        break;
-    case 2:
-    case 4:
-    case 11:
-    case 13:
-        enc->_count--;
-        break;
-    case 3:
-    case 12:
-        enc->_count += 2;
-        break;
-    default:
-        enc->_count -= 2;
-        break;
-    }
-    // evaluate counter with individual pulses per detent
-    if (enc->_count >= pulses)
-    {
-        Serial.write(up);
-        Serial.write("\n");
-        enc->_count -= pulses;
-    }
-    if (enc->_count <= -pulses)
-    {
-        Serial.write(dn);
-        Serial.write("\n");
-        enc->_count += pulses;
-    }
-}
+// view mode
+int modeView;
+bool modeWarp;
 
-// LEDs
-void writeLEDs(uint16_t leds)
+enum modeCamera_t
 {
-    shiftOut(DM13A_DAI, DM13A_DCK, MSBFIRST, (leds & 0xFF00) >> 8);
-    shiftOut(DM13A_DAI, DM13A_DCK, MSBFIRST, (leds & 0x00FF));
-    digitalWrite(DM13A_LAT, HIGH);
-    digitalWrite(DM13A_LAT, LOW);
-}
-void setupLEDs()
+  camRotation,
+  camTranslation
+} modeCamera;
+
+enum modeMove_t
 {
-    pinMode(DM13A_LAT, OUTPUT);
-    pinMode(DM13A_DCK, OUTPUT);
-    pinMode(DM13A_DAI, OUTPUT);
-    digitalWrite(DM13A_LAT, LOW);
-    digitalWrite(DM13A_DAI, LOW);
-    // init loop thru all LEDs
-    writeLEDs(0xFFFF);
-    delay(500);
-    for (uint8_t i = 0; i < NUM_LEDS; ++i) 
-    {
-        writeLEDs(1 << (i + 1)); // LED0 not connected
-        delay(100);
-    }
-    writeLEDs(0x0000);
-}
-void handleLEDs()
+  camAbsolute,
+  camIntegral
+} modeMove;
+
+void handle()
 {
-    if (Serial.available() > NUM_LEDS)
-    {   // full dataword available from RSG driver
-        // capture full databurst and parse through it
-        String leddata = Serial.readStringUntil('\n');
-        uint16_t leds = 0;
-        for (uint8_t i = 0; i < NUM_LEDS; ++i)
-        {
-            if (leddata.charAt(i + 1) == '1')
-            {
-                leds |= (1 << i); 
-            }
-        }
-        
-        writeLEDs(leds << 1);
-    }
+  swMode.handle();
+  butPause.handle();
+  butWarp.handle();
+  butView.handle();
+  butBrakeRelease.handle();
+  butBrakeSet.handle();
+  butFlapsUp.handle();
+  butFlapsDown.handle();
+  butStick.handle();
+  encZoom.handle();
+  leds.handle();
 }
 
 void setup()
 {
-    // setup interface
-    Serial.begin(115200);
+  // init led sequence
+  leds.set_all(ledOff);
+  for (int pin = 0; pin < 7; pin++)
+  {
+    leds.set(pin, ledOn);
+    leds.handle();
+    delay(200);
+  }
+  leds.set_all(ledOff);
 
-    // setup LED driver
-    setupLEDs();
+  // setup interface
+  Serial.begin(XPLDIRECT_BAUDRATE);
+  xp.begin("Throttle");
 
-    // initialize data structures for input devices
-    for (uint8_t but = 0; but < MAX_BUTTONS; but++)
-    {
-        initButton(&Buttons[but]);
-    }
-    for (uint8_t swi = 0; swi < MAX_SWITCHES; swi++)
-    {
-        initSwitch(&Switches[swi]);
-    }
-    for (uint8_t enc = 0; enc < MAX_ENCODERS; enc++)
-    {
-        initEncoder(&Encoders[enc]);
-    }
+  // register datarefs
+  xp.registerDataRef(F("sim/time/paused"), XPL_READ, 100, 0, &refPaused);
+  xp.registerDataRef(F("sim/time/ground_speed"), XPL_READWRITE, 100, 0, &refGroundSpeed);
+  xp.registerDataRef(F("sim/cockpit2/controls/parking_brake_ratio"), XPL_READWRITE, 100, 0, &refParkingBrakeRatio);
+  xp.registerDataRef(F("sim/graphics/view/pilots_head_x"), XPL_READWRITE, 50, 0.01, &refPilotsHeadX);
+  xp.registerDataRef(F("sim/graphics/view/pilots_head_y"), XPL_READWRITE, 50, 0.01, &refPilotsHeadY);
+  xp.registerDataRef(F("sim/graphics/view/pilots_head_z"), XPL_READWRITE, 50, 0.01, &refPilotsHeadZ);
+  xp.registerDataRef(F("sim/graphics/view/pilots_head_phi"), XPL_READWRITE, 50, 1, &refPilotsHeadPhi);
+  xp.registerDataRef(F("sim/graphics/view/pilots_head_psi"), XPL_READWRITE, 50, 1, &refPilotsHeadPsi);
+  xp.registerDataRef(F("sim/graphics/view/pilots_head_the"), XPL_READWRITE, 50, 1, &refPilotsHeadThe);
+  
+  // register commands
+  cmdPause = xp.registerCommand(F("sim/operation/pause_toggle"));
+  cmdWarp = xp.registerCommand(F("sim/operation/ground_speed_change"));
+  cmdViewDefault = xp.registerCommand(F("sim/view/default_view"));
+  cmdViewForwardNothing = xp.registerCommand(F("sim/view/forward_with_nothing"));
+  cmdViewChase = xp.registerCommand(F("sim/view/chase"));
+  cmdSpeedBrakeUp = xp.registerCommand(F("sim/flight_controls/speed_brakes_up_one"));
+  cmdSpeedBrakeDown = xp.registerCommand(F("sim/flight_controls/speed_brakes_down_one"));
 
-    // setup digital input pins
-    for (int i = 0; i < 13; i++)
-    {
-        pinMode(i, INPUT_PULLUP);
-    }
+  // setup analog input pins
+  for (int i = 18; i < 23; i++)
+  {
+    pinMode(i, INPUT);
+  }
 
-    // setup analog input pins
-    for (int i = 18; i < 23; i++)
-    {
-        pinMode(i, INPUT);
-    }
-
-    // Set Range Values
-    Joystick.setXAxisRange(0, 1023);
-    Joystick.setYAxisRange(0, 1023);
-    Joystick.setRxAxisRange(0, 1023);
-    Joystick.setRyAxisRange(0, 1023);
-    // Initialize Joystick, disable AutoSendState
-    Joystick.begin(false);
+  // Set Range Values
+  Joystick.setXAxisRange(0, 4095);
+  Joystick.setYAxisRange(0, 4095);
+  Joystick.setRxAxisRange(0, 4095);
+  Joystick.setRyAxisRange(0, 4095);
+  Joystick.begin(false);
 }
 
 void loop()
 {
-    // keep alive for RSG connection
-    if (millis() >= tmr_next)
-    { // timer interval for keepalive
-        Serial.write("####RealSimGear#mrusk-SW1#1#");
-        Serial.write(VERSION);
-        Serial.write("#");
-        Serial.write(BOARD_ID);
-        Serial.write("\n");
-#if DEBUG
-        // print out number of cycles per 500ms to verify runtime
-        Serial.write("Loop count: ");
-        Serial.println(count);
-        count = 0;
-#endif
-        // 500ms keep alive cycle
-        tmr_next += KEEPALIVE_DELAY;
-    }
+  // enforce sample time
+  while (!loopTimer.isTick());
 
-#if DEBUG
-    count++;
-#endif
+  // handle interface
+  xp.xloop();
 
-    // handle incoming LED data
-    handleLEDs();
+  // handle input devices
+  handle();
 
-    // avoid compiler warning if a device type is not used
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-variable"
-    uint8_t btn = 0;
-    uint8_t swi = 0;
-    uint8_t enc = 0;
-#pragma GCC diagnostic pop
-
-    // handle devices
-    handleSwitch(&Switches[swi++], "SW_BRAKE_RELEASE", !digitalRead(4));
-    handleSwitch(&Switches[swi++], "SW_BRAKE_SET", !digitalRead(5));
-    handleSwitch(&Switches[swi++], "SW_NN1", !digitalRead(6));
-    handleSwitch(&Switches[swi++], "SW_NN2", !digitalRead(7));
-    handleButton(&Buttons[btn++], "BTN_PAUSE", single, !digitalRead(1));
-    handleButton(&Buttons[btn++], "BTN_WARP", single, !digitalRead(2));
-    handleButton(&Buttons[btn++], "BTN_VIEW", single, !digitalRead(3));
-    handleSwitch(&Switches[swi++], "SW_NN3", !digitalRead(0));
-    handleEncoder(&Encoders[enc++], "ENC_ZOOM_IN", "ENC_ZOOM_OUT", !digitalRead(9), !digitalRead(10), 4);
-    handleButton(&Buttons[btn++], "BTN_ZOOM_PUSH", single, !digitalRead(11));
-    handleButton(&Buttons[btn++], "BTN_PAN_PUSH", single, !digitalRead(8));
-
-#if DEBUG
-    // show number of used input devices and halt program in case of error since memory is corrupted
-    if (!init_mark)
+  // brake release
+  if (butBrakeRelease.pressed())
+  {
+    refParkingBrakeRatio = 0.0;
+  }
+  // brake set
+  if (butBrakeSet.pressed())
+  {
+    refParkingBrakeRatio = 1.0;
+  }
+  // pause
+  if (butPause.pressed())
+  {
+    xp.commandTrigger(cmdPause);
+  }
+  // warp
+  if (butWarp.pressed())
+  {
+    modeWarp = !modeWarp;
+    refGroundSpeed = modeWarp ? 16 : 1;
+  }
+  // handle view
+  if (butView.pressed())
+  {
+    modeView = (modeView + 1) % 3;
+    switch (modeView)
     {
-        init_mark = true;
-        Serial.print("Buttons:  ");
-        Serial.println(btn);
-        if (btn > MAX_BUTTONS)
-        {
-            Serial.println("ERROR: Too many buttons used");
-            while (true)
-                ;
-        }
-        Serial.print("Switches: ");
-        Serial.println(swi);
-        if (swi > MAX_SWITCHES)
-        {
-            Serial.println("ERROR: Too many Switches used");
-            while (true)
-                ;
-        }
-        Serial.print("Encoders: ");
-        Serial.println(enc);
-        if (enc > MAX_ENCODERS)
-        {
-            Serial.println("ERROR: Too many encoders used");
-            while (true)
-                ;
-        }
+    case 1:
+      xp.commandTrigger(cmdViewForwardNothing);
+      break;
+    case 2:
+      xp.commandTrigger(cmdViewChase);
+      break;
+    default:
+      xp.commandTrigger(cmdViewDefault);
+      break;
     }
-#endif
+  }
 
+  // brake leds
+  if (refParkingBrakeRatio > 0.99)
+  {
+    leds.set(LED_BRAKE_REL, ledOff);
+    leds.set(LED_BRAKE_SET, ledOn);
+  }
+  if (refParkingBrakeRatio == 0.0)
+  {
+    leds.set(LED_BRAKE_REL, ledOn);
+    leds.set(LED_BRAKE_SET, ledOff);
+  }
 
-    // handle joystick
-    Joystick.setXAxis(1023-analogRead(A0));
-    Joystick.setYAxis(1023-analogRead(A1));
-    Joystick.setRxAxis(analogRead(A3));
-    Joystick.setRyAxis(analogRead(A2));
-    Joystick.sendState();
+  // pause led
+  leds.set(LED_PAUSE, refPaused ? ledMedium : ledOff);
+  
+  // warp led
+  switch (refGroundSpeed)
+  {
+  default:
+    leds.set(LED_WARP, ledOff);
+    break;
+  case 2:
+    leds.set(LED_WARP, ledSlow);
+    break;
+  case 4:
+    leds.set(LED_WARP, ledMedium);
+    break;
+  case 8:
+    leds.set(LED_WARP, ledFast);
+    break;
+  case 16:
+    leds.set(LED_WARP, ledOn);
+    break;
+  }
+
+  // camera
+  if (encZoom.pressed())
+  {
+    modeCamera = (modeCamera == camRotation) ? camTranslation : camRotation;
+  }
+  if (butStick.pressed())
+  {
+    modeMove = (modeMove == camAbsolute) ? camIntegral : camAbsolute;
+  }
+
+  if (encZoom.up())
+  {
+    refPilotsHeadZ += 0.01;
+  }
+  if (encZoom.down())
+  {
+    refPilotsHeadZ -= 0.01;
+  }
+
+  if (modeCamera == camTranslation)
+  {
+    leds.set(LED_CAMERA, ledOn);
+    refPilotsHeadX -= 0.0001 * stickX.value();
+    refPilotsHeadY += 0.0001 * stickY.value();
+  }
+  else
+  {
+    if (modeMove == camAbsolute)
+    {
+      leds.set(LED_CAMERA, ledOff);
+      refPilotsHeadPsi = 135 * stickX.value();
+      refPilotsHeadThe = 90 * stickY.value();
+    }
+    else
+    {
+      leds.set(LED_CAMERA, ledMedium);
+      refPilotsHeadPsi = 135 * stickX.value();
+      refPilotsHeadThe += 0.05 * stickY.value();
+    }
+  }
+
+  // throttle
+  if (swMode.engaged())
+  {
+    Joystick.setXAxis(4095 * sliderLeft.value());
+    Joystick.setYAxis(4095 * sliderRight.value());
+  }
+  else
+  {
+    Joystick.setRxAxis(4095 * sliderLeft.value());
+    Joystick.setRyAxis(4095 * sliderRight.value());
+  }
+  Joystick.sendState();
 }
