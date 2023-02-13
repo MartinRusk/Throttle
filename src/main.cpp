@@ -8,6 +8,8 @@
 #include <SoftTimer.h>
 #include <AnalogIn.h>
 
+SoftTimer loopTimer(10);
+
 XPLDirect xp(&Serial);
 
 Switch swMode(0);
@@ -29,8 +31,8 @@ LedShift leds(16, 15, 14);
 #define LED_VIEW 5
 #define LED_CAMERA 6
 
-AnalogIn stickX(A0, true, 50);
-AnalogIn stickY(A1, true, 50);
+AnalogIn stickX(A0, true, 10);
+AnalogIn stickY(A1, true, 10);
 AnalogIn sliderLeft(A2, false, 10);
 AnalogIn sliderRight(A3, false, 10);
 
@@ -43,19 +45,24 @@ Joystick_ Joystick(JOYSTICK_DEFAULT_REPORT_ID,
                    false, false,         // Rudder, Throttle (T1/T2)
                    false, false, false); // Accelerator, Brake, Steering
 
-SoftTimer loopTimer(10);
-
 // datarefs
 long int refPaused;
 long int refGroundSpeed;
 float refParkingBrakeRatio;
 
-float refPilotsHeadX;
-float refPilotsHeadY;
-float refPilotsHeadZ;
-float refPilotsHeadPsi;
-float refPilotsHeadThe;
-float refPilotsHeadPhi;
+float refPilotsHeadX = -0.25;
+float refPilotsHeadY = 0.67;
+float refPilotsHeadZ = -0.05;
+float refPilotsHeadPsi = 0;
+float refPilotsHeadThe = 0;
+float refPilotsHeadPhi = 0;
+
+float savePilotsHeadX;
+float savePilotsHeadY;
+float savePilotsHeadZ;
+float savePilotsHeadPsi;
+float savePilotsHeadThe;
+float savePilotsHeadPhi;
 
 // commands
 int cmdPause;
@@ -111,6 +118,26 @@ void handle()
   leds.handle();
 }
 
+void saveHeadPos()
+{
+  savePilotsHeadX = refPilotsHeadX;
+  savePilotsHeadY = refPilotsHeadY;
+  savePilotsHeadZ = refPilotsHeadZ;
+  savePilotsHeadPsi = refPilotsHeadPsi;
+  savePilotsHeadThe = refPilotsHeadThe;
+  savePilotsHeadPhi = refPilotsHeadPhi;
+}
+
+void restoreHeadPos()
+{
+  refPilotsHeadX = savePilotsHeadX;
+  refPilotsHeadY = savePilotsHeadY;
+  refPilotsHeadZ = savePilotsHeadZ;
+  refPilotsHeadPsi = savePilotsHeadPsi;
+  refPilotsHeadThe = savePilotsHeadThe;
+  refPilotsHeadPhi = savePilotsHeadPhi;
+}
+
 void setup()
 {
   // init led sequence
@@ -131,13 +158,13 @@ void setup()
   xp.registerDataRef(F("sim/time/paused"), XPL_READ, 100, 0, &refPaused);
   xp.registerDataRef(F("sim/time/ground_speed"), XPL_READWRITE, 100, 0, &refGroundSpeed);
   xp.registerDataRef(F("sim/cockpit2/controls/parking_brake_ratio"), XPL_READWRITE, 100, 0, &refParkingBrakeRatio);
-  xp.registerDataRef(F("sim/graphics/view/pilots_head_x"), XPL_READWRITE, 50, 0.01, &refPilotsHeadX);
-  xp.registerDataRef(F("sim/graphics/view/pilots_head_y"), XPL_READWRITE, 50, 0.01, &refPilotsHeadY);
-  xp.registerDataRef(F("sim/graphics/view/pilots_head_z"), XPL_READWRITE, 50, 0.01, &refPilotsHeadZ);
-  xp.registerDataRef(F("sim/graphics/view/pilots_head_phi"), XPL_READWRITE, 50, 1, &refPilotsHeadPhi);
-  xp.registerDataRef(F("sim/graphics/view/pilots_head_psi"), XPL_READWRITE, 50, 1, &refPilotsHeadPsi);
-  xp.registerDataRef(F("sim/graphics/view/pilots_head_the"), XPL_READWRITE, 50, 1, &refPilotsHeadThe);
-  
+  xp.registerDataRef(F("sim/graphics/view/pilots_head_x"), XPL_READWRITE, 50, 0, &refPilotsHeadX);
+  xp.registerDataRef(F("sim/graphics/view/pilots_head_y"), XPL_READWRITE, 50, 0, &refPilotsHeadY);
+  xp.registerDataRef(F("sim/graphics/view/pilots_head_z"), XPL_READWRITE, 50, 0, &refPilotsHeadZ);
+  xp.registerDataRef(F("sim/graphics/view/pilots_head_phi"), XPL_READWRITE, 50, 0, &refPilotsHeadPhi);
+  xp.registerDataRef(F("sim/graphics/view/pilots_head_psi"), XPL_READWRITE, 50, 0, &refPilotsHeadPsi);
+  xp.registerDataRef(F("sim/graphics/view/pilots_head_the"), XPL_READWRITE, 50, 0, &refPilotsHeadThe);
+
   // register commands
   cmdPause = xp.registerCommand(F("sim/operation/pause_toggle"));
   cmdWarp = xp.registerCommand(F("sim/operation/ground_speed_change"));
@@ -147,11 +174,9 @@ void setup()
   cmdSpeedBrakeUp = xp.registerCommand(F("sim/flight_controls/speed_brakes_up_one"));
   cmdSpeedBrakeDown = xp.registerCommand(F("sim/flight_controls/speed_brakes_down_one"));
 
-  // setup analog input pins
-  for (int i = 18; i < 23; i++)
-  {
-    pinMode(i, INPUT);
-  }
+  // calibrate stick
+  stickX.calibrate();
+  stickY.calibrate();
 
   // Set Range Values
   Joystick.setXAxisRange(0, 4095);
@@ -164,13 +189,24 @@ void setup()
 void loop()
 {
   // enforce sample time
-  while (!loopTimer.isTick());
+  while (!loopTimer.isTick())
+  {
+    // handle input devices
+    handle();
+  }
+
+  // Serial.print("L: ");
+  // Serial.print(sliderLeft.value());
+  // Serial.print(" R: ");
+  // Serial.print(sliderRight.value());
+  // Serial.print(" X: ");
+  // Serial.print(stickX.value());
+  // Serial.print(" Y: ");
+  // Serial.print(stickY.value());
+  // Serial.println();
 
   // handle interface
   xp.xloop();
-
-  // handle input devices
-  handle();
 
   // brake release
   if (butBrakeRelease.pressed())
@@ -199,7 +235,11 @@ void loop()
     modeView = (modeView + 1) % 3;
     switch (modeView)
     {
+    // case 1:
+    //   restoreHeadPos();
+    //   break;
     case 1:
+      saveHeadPos();
       xp.commandTrigger(cmdViewForwardNothing);
       break;
     case 2:
@@ -207,6 +247,7 @@ void loop()
       break;
     default:
       xp.commandTrigger(cmdViewDefault);
+      restoreHeadPos();
       break;
     }
   }
@@ -225,7 +266,7 @@ void loop()
 
   // pause led
   leds.set(LED_PAUSE, refPaused ? ledMedium : ledOff);
-  
+
   // warp led
   switch (refGroundSpeed)
   {
@@ -246,48 +287,50 @@ void loop()
     break;
   }
 
-  // camera
-  if (encZoom.pressed())
+  if (modeView == 0)
   {
-    modeCamera = (modeCamera == camRotation) ? camTranslation : camRotation;
-  }
-  if (butStick.pressed())
-  {
-    modeMove = (modeMove == camAbsolute) ? camIntegral : camAbsolute;
-  }
-
-  if (encZoom.up())
-  {
-    refPilotsHeadZ += 0.01;
-  }
-  if (encZoom.down())
-  {
-    refPilotsHeadZ -= 0.01;
-  }
-
-  if (modeCamera == camTranslation)
-  {
-    leds.set(LED_CAMERA, ledOn);
-    refPilotsHeadX -= 0.0001 * stickX.value();
-    refPilotsHeadY += 0.0001 * stickY.value();
-  }
-  else
-  {
-    if (modeMove == camAbsolute)
+    // camera
+    if (encZoom.pressed())
     {
-      leds.set(LED_CAMERA, ledOff);
-      refPilotsHeadPsi = 135 * stickX.value();
-      refPilotsHeadThe = 90 * stickY.value();
+      modeCamera = (modeCamera == camRotation) ? camTranslation : camRotation;
+    }
+    if (butStick.pressed())
+    {
+      modeMove = (modeMove == camAbsolute) ? camIntegral : camAbsolute;
+    }
+
+    if (encZoom.up())
+    {
+      refPilotsHeadZ -= 0.01;
+    }
+    if (encZoom.down())
+    {
+      refPilotsHeadZ += 0.01;
+    }
+
+    if (modeCamera == camTranslation)
+    {
+      leds.set(LED_CAMERA, ledOn);
+      refPilotsHeadX -= 0.0005 * stickX.value();
+      refPilotsHeadY += 0.0005 * stickY.value();
     }
     else
     {
-      leds.set(LED_CAMERA, ledMedium);
-      refPilotsHeadPsi = 135 * stickX.value();
-      refPilotsHeadThe += 0.05 * stickY.value();
+      if (modeMove == camAbsolute)
+      {
+        leds.set(LED_CAMERA, ledOff);
+        refPilotsHeadPsi = -135 * stickX.value();
+        refPilotsHeadThe = 60 * stickY.value();
+      }
+      else
+      {
+        leds.set(LED_CAMERA, ledMedium);
+        refPilotsHeadPsi = -135 * stickX.value();
+        refPilotsHeadThe += 0.5 * stickY.value();
+      }
     }
   }
-
-  // throttle
+  // sliders
   if (swMode.engaged())
   {
     Joystick.setXAxis(4095 * sliderLeft.value());

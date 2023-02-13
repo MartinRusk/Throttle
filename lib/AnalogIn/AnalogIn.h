@@ -1,6 +1,8 @@
 #ifndef AnalogIn_h
 #define AnalogIn_h
 
+#define AD_RES 10
+
 class AnalogIn
 {
 public:
@@ -10,8 +12,9 @@ public:
   int raw();
   void calibrate();
 private:
-  float _timeConst;
+  float _filterConst;
   float _value;
+  float _scale;
   float _scalePos;
   float _scaleNeg;
   int _offset;
