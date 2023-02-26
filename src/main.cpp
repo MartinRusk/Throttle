@@ -18,8 +18,8 @@ Button butWarp(2);
 Button butView(3);
 Button butBrakeRelease(4);
 Button butBrakeSet(5);
-Button butFlapsUp(6);
-Button butFlapsDown(7);
+Button butSpeedBrakeUp(6, 400);
+Button butSpeedBrakeDown(7, 400);
 Button butStick(8);
 Encoder encZoom(9, 10, 11, 4);
 LedShift leds(16, 15, 14);
@@ -111,8 +111,8 @@ void handle()
   butView.handle();
   butBrakeRelease.handle();
   butBrakeSet.handle();
-  butFlapsUp.handle();
-  butFlapsDown.handle();
+  butSpeedBrakeUp.handle();
+  butSpeedBrakeDown.handle();
   butStick.handle();
   encZoom.handle();
   leds.handle();
@@ -217,6 +217,16 @@ void loop()
   if (butBrakeSet.pressed())
   {
     refParkingBrakeRatio = 1.0;
+  }
+  // brake release
+  if (butSpeedBrakeUp.pressed())
+  {
+    xp.commandTrigger(cmdSpeedBrakeUp);
+  }
+  // brake set
+  if (butSpeedBrakeDown.pressed())
+  {
+    xp.commandTrigger(cmdSpeedBrakeDown);
   }
   // pause
   if (butPause.pressed())
