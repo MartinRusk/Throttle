@@ -35,18 +35,15 @@ void Button::handle()
       _transition = ePressed;
       _timer = millis() + _delay;
     }
+    else if (_delay > 0 && (millis() >= _timer))
+    {
+      _state = DEBOUNCE_DELAY;
+      _transition = ePressed;
+      _timer += _delay;
+    }
   }
   else if (_state > 0)
   {
-    if (_delay > 0)
-    {
-      if (millis() >= _timer)
-        {
-          _timer += _delay;
-          _transition = ePressed;
-          _state = DEBOUNCE_DELAY;
-        }
-    }
     if (--_state == 0)
     {
       _transition = eReleased;
