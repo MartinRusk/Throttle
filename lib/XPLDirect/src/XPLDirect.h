@@ -3,7 +3,7 @@
   Created by Michael Gerlicher,  September 2020.
   To report problems, download updates and examples, suggest enhancements or get technical support, please visit my patreon page:
      www.patreon.com/curiosityworkshop
-  Stripped down to Minimal Version by brusk, February 2023  
+  Stripped down to Minimal Version by mrusk, February 2023  
 */
 
 #ifndef XPLDirect_h
@@ -19,9 +19,17 @@
                               // be as long as the longest dataref name + 10.  If you are using datarefs
                               // that transfer strings it needs to be big enough for those too. (default 200)
 
+#define XPL_USE_PROGMEM 1 // use Flash for strings, requires F() macro for strings in all registration calls
+
 //////////////////////////////////////////////////////////////
 // STOP! Dont change any other defines in this header!
 //////////////////////////////////////////////////////////////
+
+#if XPL_USE_PROGMEM
+  #define XPLSTRING __FlashStringHelper
+#else
+  #define XPLSTRING char
+#endif
 
 #define XPLDIRECT_BAUDRATE 115200   // don't mess with this, it needs to match the plugin which won't change
 #define XPLDIRECT_PACKETHEADER '<'  // ...or this
@@ -67,11 +75,11 @@ public:
   int commandTrigger(int commandHandle); // triggers specified command 1 time;
   int datarefsUpdated();      // returns true if xplane has updated any datarefs since last call to datarefsUpdated()
   int hasUpdated(int handle); // returns true if xplane has updated this dataref since last call to hasUpdated()
-  int registerDataRef(const __FlashStringHelper *, int, unsigned int, float, long int *);
-  int registerDataRef(const __FlashStringHelper *, int, unsigned int, float, long int *, int);
-  int registerDataRef(const __FlashStringHelper *, int, unsigned int, float, float *);
-  int registerDataRef(const __FlashStringHelper *, int, unsigned int, float, float *, int);
-  int registerCommand(const __FlashStringHelper *commandName); 
+  int registerDataRef(const XPLSTRING *, int, unsigned int, float, long int *);
+  int registerDataRef(const XPLSTRING *, int, unsigned int, float, long int *, int);
+  int registerDataRef(const XPLSTRING *, int, unsigned int, float, float *);
+  int registerDataRef(const XPLSTRING *, int, unsigned int, float, float *, int);
+  int registerCommand(const XPLSTRING *commandName); 
   int allDataRefsRegistered(void);
   void sendResetRequest(void);
   int xloop(void); // where the magic happens!
@@ -98,8 +106,6 @@ private:
   int _receiveBufferBytesReceived;
   char _sendBuffer[XPLMAX_PACKETSIZE];
   int _connectionStatus;
-  long int _loopTimeBeforeRegistration;
-  long int _loopTimeAfterRegistration;
   int _dataRefsCount;
   struct _dataRefStructure
   {
@@ -110,10 +116,13 @@ private:
     byte forceUpdate;         // in case xplane plugin asks for a refresh
     unsigned long updateRate; // maximum update rate in milliseconds, 0 = every change
     unsigned long lastUpdateTime;
-    const __FlashStringHelper *FdataRefName;
+    // const XPLSTRING *Fprefix;
+    const XPLSTRING *FdataRefName;
     void *latestValue;
-    long int lastSentIntValue;
-    float lastSentFloatValue;
+    union {
+      long int lastSentIntValue;
+      float lastSentFloatValue;
+    };
     byte updatedFlag; //  True if xplane has updated this dataref.  Gets reset when we call hasUpdated method.
     byte arrayIndex;  // for datarefs that speak in arrays
   } *_dataRefs[XPLDIRECT_MAXDATAREFS_ARDUINO];
@@ -121,7 +130,8 @@ private:
   struct _commandStructure
   {
     int commandHandle;
-    const __FlashStringHelper *FcommandName;
+    // const XPLSTRING *Fprefix;
+    const XPLSTRING *FcommandName;
     unsigned long updateRate; // maximum update rate in milliseconds, 0 = every change
     unsigned long lastUpdateTime;
   } *_commands[XPLDIRECT_MAXCOMMANDS_ARDUINO];

@@ -1,7 +1,7 @@
 /*
   XPLDirect.cpp
   Created by Michael Gerlicher, September 2020.
-  Stripped down to Minimal Version by brusk, February 2023
+  Stripped down to Minimal Version by mrusk, February 2023
 */
 
 #include <arduino.h>
@@ -380,7 +380,7 @@ int XPLDirect::allDataRefsRegistered()
   return _allDataRefsRegistered;
 }
 
-int XPLDirect::registerDataRef(const __FlashStringHelper *datarefName, int rwmode, unsigned int rate, float divider, long int *value)
+int XPLDirect::registerDataRef(const XPLSTRING *datarefName, int rwmode, unsigned int rate, float divider, long int *value)
 {
   if (_dataRefsCount >= XPLDIRECT_MAXDATAREFS_ARDUINO)
   {
@@ -401,7 +401,7 @@ int XPLDirect::registerDataRef(const __FlashStringHelper *datarefName, int rwmod
   return (_dataRefsCount - 1);
 }
 
-int XPLDirect::registerDataRef(const __FlashStringHelper *datarefName, int rwmode, unsigned int rate, float divider, long int *value, int index)
+int XPLDirect::registerDataRef(const XPLSTRING *datarefName, int rwmode, unsigned int rate, float divider, long int *value, int index)
 {
   if (_dataRefsCount >= XPLDIRECT_MAXDATAREFS_ARDUINO)
   {
@@ -422,7 +422,7 @@ int XPLDirect::registerDataRef(const __FlashStringHelper *datarefName, int rwmod
   return (_dataRefsCount - 1);
 }
 
-int XPLDirect::registerDataRef(const __FlashStringHelper *datarefName, int rwmode, unsigned int rate, float divider, float *value)
+int XPLDirect::registerDataRef(const XPLSTRING *datarefName, int rwmode, unsigned int rate, float divider, float *value)
 {
   if (_dataRefsCount >= XPLDIRECT_MAXDATAREFS_ARDUINO)
   {
@@ -443,7 +443,7 @@ int XPLDirect::registerDataRef(const __FlashStringHelper *datarefName, int rwmod
   return (_dataRefsCount - 1);
 }
 
-int XPLDirect::registerDataRef(const __FlashStringHelper *datarefName, int rwmode, unsigned int rate, float divider, float *value, int index)
+int XPLDirect::registerDataRef(const XPLSTRING *datarefName, int rwmode, unsigned int rate, float divider, float *value, int index)
 {
   if (_dataRefsCount >= XPLDIRECT_MAXDATAREFS_ARDUINO)
   {
@@ -463,7 +463,7 @@ int XPLDirect::registerDataRef(const __FlashStringHelper *datarefName, int rwmod
   return (_dataRefsCount - 1);
 }
 
-int XPLDirect::registerCommand(const __FlashStringHelper *commandName) // user will trigger commands with commandTrigger
+int XPLDirect::registerCommand(const XPLSTRING *commandName) // user will trigger commands with commandTrigger
 {
   if (_commandsCount >= XPLDIRECT_MAXCOMMANDS_ARDUINO)
   {
