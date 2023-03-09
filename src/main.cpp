@@ -1,12 +1,6 @@
 #include <Arduino.h>
-#include <XPLDirect.h>
 #include <Joystick.h>
-#include <Switch.h>
-#include <Button.h>
-#include <Encoder.h>
-#include <LedShift.h>
-#include <Timer.h>
-#include <AnalogIn.h>
+#include <XPLDevices.h>
 
 Timer loopTimer(10);
 
