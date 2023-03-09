@@ -339,7 +339,7 @@ void loop()
     }
   }
   // sliders
-  if (swMode.state() == switchOn)
+  if (swMode.on())
   {
     Joystick.setXAxis(4095 * sliderLeft.value());
     Joystick.setYAxis(4095 * sliderRight.value());
