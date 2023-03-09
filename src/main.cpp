@@ -5,12 +5,10 @@
 #include <Button.h>
 #include <Encoder.h>
 #include <LedShift.h>
-#include <SoftTimer.h>
+#include <Timer.h>
 #include <AnalogIn.h>
 
-SoftTimer loopTimer(10);
-
-XPLDirect xp(&Serial);
+Timer loopTimer(10);
 
 Switch swMode(0);
 Button butPause(1);
@@ -18,10 +16,10 @@ Button butWarp(2);
 Button butView(3);
 Button butBrakeRelease(4);
 Button butBrakeSet(5);
-Button butSpeedBrakeUp(6, 400);
-Button butSpeedBrakeDown(7, 400);
+RepeatButton butSpeedBrakeUp(6, 400);
+RepeatButton butSpeedBrakeDown(7, 400);
 Button butStick(8);
-Encoder encZoom(9, 10, 11, 4);
+Encoder encZoom(9, 10, 11, enc4Pulse);
 LedShift leds(16, 15, 14);
 
 #define LED_BRAKE_REL 1
@@ -31,10 +29,10 @@ LedShift leds(16, 15, 14);
 #define LED_VIEW 5
 #define LED_CAMERA 6
 
-AnalogIn stickX(A0, true, 10);
-AnalogIn stickY(A1, true, 10);
-AnalogIn sliderLeft(A2, false, 10);
-AnalogIn sliderRight(A3, false, 10);
+AnalogIn stickX(A0, bipolar, 5);
+AnalogIn stickY(A1, bipolar, 5);
+AnalogIn sliderLeft(A2, unipolar, 10);
+AnalogIn sliderRight(A3, unipolar, 10);
 
 // Create Joystick
 Joystick_ Joystick(JOYSTICK_DEFAULT_REPORT_ID,
@@ -146,33 +144,33 @@ void setup()
   {
     leds.set(pin, ledOn);
     leds.handle();
-    delay(200);
+    delay(100);
   }
   leds.set_all(ledOff);
 
   // setup interface
   Serial.begin(XPLDIRECT_BAUDRATE);
-  xp.begin("Throttle");
+  XP.begin("Throttle");
 
   // register datarefs
-  xp.registerDataRef(F("sim/time/paused"), XPL_READ, 100, 0, &refPaused);
-  xp.registerDataRef(F("sim/time/ground_speed"), XPL_READWRITE, 100, 0, &refGroundSpeed);
-  xp.registerDataRef(F("sim/cockpit2/controls/parking_brake_ratio"), XPL_READWRITE, 100, 0, &refParkingBrakeRatio);
-  xp.registerDataRef(F("sim/graphics/view/pilots_head_x"), XPL_READWRITE, 50, 0, &refPilotsHeadX);
-  xp.registerDataRef(F("sim/graphics/view/pilots_head_y"), XPL_READWRITE, 50, 0, &refPilotsHeadY);
-  xp.registerDataRef(F("sim/graphics/view/pilots_head_z"), XPL_READWRITE, 50, 0, &refPilotsHeadZ);
-  xp.registerDataRef(F("sim/graphics/view/pilots_head_phi"), XPL_READWRITE, 50, 0, &refPilotsHeadPhi);
-  xp.registerDataRef(F("sim/graphics/view/pilots_head_psi"), XPL_READWRITE, 50, 0, &refPilotsHeadPsi);
-  xp.registerDataRef(F("sim/graphics/view/pilots_head_the"), XPL_READWRITE, 50, 0, &refPilotsHeadThe);
+  XP.registerDataRef(F("sim/time/paused"), XPL_READ, 100, 0, &refPaused);
+  XP.registerDataRef(F("sim/time/ground_speed"), XPL_READWRITE, 100, 0, &refGroundSpeed);
+  XP.registerDataRef(F("sim/cockpit2/controls/parking_brake_ratio"), XPL_READWRITE, 100, 0, &refParkingBrakeRatio);
+  XP.registerDataRef(F("sim/graphics/view/pilots_head_x"), XPL_READWRITE, 50, 0, &refPilotsHeadX);
+  XP.registerDataRef(F("sim/graphics/view/pilots_head_y"), XPL_READWRITE, 50, 0, &refPilotsHeadY);
+  XP.registerDataRef(F("sim/graphics/view/pilots_head_z"), XPL_READWRITE, 50, 0, &refPilotsHeadZ);
+  XP.registerDataRef(F("sim/graphics/view/pilots_head_phi"), XPL_READWRITE, 50, 0, &refPilotsHeadPhi);
+  XP.registerDataRef(F("sim/graphics/view/pilots_head_psi"), XPL_READWRITE, 50, 0, &refPilotsHeadPsi);
+  XP.registerDataRef(F("sim/graphics/view/pilots_head_the"), XPL_READWRITE, 50, 0, &refPilotsHeadThe);
 
   // register commands
-  cmdPause = xp.registerCommand(F("sim/operation/pause_toggle"));
-  cmdWarp = xp.registerCommand(F("sim/operation/ground_speed_change"));
-  cmdViewDefault = xp.registerCommand(F("sim/view/default_view"));
-  cmdViewForwardNothing = xp.registerCommand(F("sim/view/forward_with_nothing"));
-  cmdViewChase = xp.registerCommand(F("sim/view/chase"));
-  cmdSpeedBrakeUp = xp.registerCommand(F("sim/flight_controls/speed_brakes_up_one"));
-  cmdSpeedBrakeDown = xp.registerCommand(F("sim/flight_controls/speed_brakes_down_one"));
+  cmdPause = XP.registerCommand(F("sim/operation/pause_toggle"));
+  cmdWarp = XP.registerCommand(F("sim/operation/ground_speed_change"));
+  cmdViewDefault = XP.registerCommand(F("sim/view/default_view"));
+  cmdViewForwardNothing = XP.registerCommand(F("sim/view/forward_with_nothing"));
+  cmdViewChase = XP.registerCommand(F("sim/view/chase"));
+  cmdSpeedBrakeUp = XP.registerCommand(F("sim/flight_controls/speed_brakes_up_one"));
+  cmdSpeedBrakeDown = XP.registerCommand(F("sim/flight_controls/speed_brakes_down_one"));
 
   // calibrate stick
   stickX.calibrate();
@@ -206,7 +204,7 @@ void loop()
   // Serial.println();
 
   // handle interface
-  xp.xloop();
+  XP.xloop();
 
   // brake release
   if (butBrakeRelease.pressed())
@@ -221,17 +219,17 @@ void loop()
   // brake release
   if (butSpeedBrakeUp.pressed())
   {
-    xp.commandTrigger(cmdSpeedBrakeUp);
+    XP.commandTrigger(cmdSpeedBrakeUp);
   }
   // brake set
   if (butSpeedBrakeDown.pressed())
   {
-    xp.commandTrigger(cmdSpeedBrakeDown);
+    XP.commandTrigger(cmdSpeedBrakeDown);
   }
   // pause
   if (butPause.pressed())
   {
-    xp.commandTrigger(cmdPause);
+    XP.commandTrigger(cmdPause);
   }
   // warp
   if (butWarp.pressed())
@@ -250,13 +248,13 @@ void loop()
     //   break;
     case 1:
       saveHeadPos();
-      xp.commandTrigger(cmdViewForwardNothing);
+      XP.commandTrigger(cmdViewForwardNothing);
       break;
     case 2:
-      xp.commandTrigger(cmdViewChase);
+      XP.commandTrigger(cmdViewChase);
       break;
     default:
-      xp.commandTrigger(cmdViewDefault);
+      XP.commandTrigger(cmdViewDefault);
       restoreHeadPos();
       break;
     }
@@ -341,7 +339,7 @@ void loop()
     }
   }
   // sliders
-  if (swMode.engaged())
+  if (swMode.state() == switchOn)
   {
     Joystick.setXAxis(4095 * sliderLeft.value());
     Joystick.setYAxis(4095 * sliderRight.value());
