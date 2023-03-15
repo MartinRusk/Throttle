@@ -310,6 +310,9 @@ void loop()
       refPilotsHeadZ += 0.01;
     }
 
+    stickX.handle();
+    stickY.handle();
+
     if (modeCamera == camTranslation)
     {
       leds.set(LED_CAMERA, ledOn);
@@ -333,6 +336,8 @@ void loop()
     }
   }
   // sliders
+  sliderLeft.handle();
+  sliderRight.handle();
   if (swMode.on())
   {
     Joystick.setXAxis(4095 * sliderLeft.value());
