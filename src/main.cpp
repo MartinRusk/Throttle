@@ -181,21 +181,11 @@ void setup()
 void loop()
 {
   // enforce sample time
-  while (!loopTimer.isTick())
+  while (!loopTimer.elapsed())
   {
     // handle input devices
     handle();
   }
-
-  // Serial.print("L: ");
-  // Serial.print(sliderLeft.value());
-  // Serial.print(" R: ");
-  // Serial.print(sliderRight.value());
-  // Serial.print(" X: ");
-  // Serial.print(stickX.value());
-  // Serial.print(" Y: ");
-  // Serial.print(stickY.value());
-  // Serial.println();
 
   // handle interface
   XP.xloop();
