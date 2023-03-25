@@ -6,6 +6,9 @@ https://www.printables.com/de/model/315603-desktop-twin-engine-throttle-for-flig
 
 Software is (c) by mrusk.
 
+Uses the XPLDirect plugin for X-Plane by Curiosity Workshop. For download and technical support join our Discord via 
+https://discord.gg/gzXetjEST4
+
 Licensed under GPL V3.0 License.
 
 3D and PCB design files are (c) by mrusk. 
