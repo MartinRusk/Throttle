@@ -32,33 +32,14 @@ Joystick_ Joystick(JOYSTICK_DEFAULT_REPORT_ID,
                    0, 0,                 // Buttons, HAT Switches
                    true, true, false,    // X,Y,Z Axes (pos)
                    true, true, false,    // Rx,Ry,Rz Axes (rot)
-                   false, false,         // Rudder, Throttle (T1/T2)
+                   true, true,           // Rudder, Throttle (T1/T2)
                    false, false, false); // Accelerator, Brake, Steering
 
 // datarefs
-long refPaused;
-long refGroundSpeed;
-float refParkingBrakeRatio;
-float readParkingBrakeRatio;
-
-// float refPilotsHeadX = -0.25;
-// float refPilotsHeadY = 0.67;
-// float refPilotsHeadZ = -0.05;
-float refPilotsHeadPsi = 0;
-float refPilotsHeadThe = 0;
-// float refPilotsHeadPhi = 0;
-
-// float savePilotsHeadX;
-// float savePilotsHeadY;
-// float savePilotsHeadZ;
-// float savePilotsHeadPsi;
-// float savePilotsHeadThe;
-// float savePilotsHeadPhi;
-
-float readPilotsHeadPsi;
-float readPilotsHeadThe;
-float zeroPilotsHeadPsi;
-float zeroPilotsHeadThe;
+long refPaused = 0;
+long refGroundSpeed = 1;
+float refParkingBrakeRatio = 1.0;
+float readParkingBrakeRatio = 0.5;
 
 // commands
 int cmdPause;
@@ -105,10 +86,8 @@ int cmdRotDownSlow;
 int cmdQuickLook0;
 int cmdQuickLook0mem;
 
-Timer tmrMain(1000);
 Timer tmrThumbstick(50);
 Timer tmrSlider(10);
-Timer tmrViewChange(400);
 
 enum modeCamera_t
 {
@@ -117,24 +96,12 @@ enum modeCamera_t
   camRotation,
 } modeCamera;
 
-// enum modeMove_t
-// {
-//   camAbsolute,
-//   camIntegral
-// } modeMove;
-
 enum modeView_t
 {
   viewCockpit,
-  viewExtern
+  viewForward,
+  viewChase
 } modeView;
-
-enum viewChange_t
-{
-  viewStable,
-  viewSaving,
-  viewLoading
-} viewChange;
 
 enum modeWarp_t
 {
@@ -144,40 +111,13 @@ enum modeWarp_t
 
 int classifyValue(float value, int negMax, int negNorm, int negMin, int posMin, int posNorm, int posMax)
 {
-  if (value < -0.7) return negMax;
-  if (value < -0.4) return negNorm;
+  if (value < -0.99) return negMax;
+  if (value < -0.6) return negNorm;
   if (value < -0.1) return negMin;
-  if (value > 0.7) return posMax;
-  if (value > 0.4) return posNorm;
+  if (value > 0.99) return posMax;
+  if (value > 0.6) return posNorm;
   if (value > 0.1) return posMin;
   return -1;
-}
-
-// void saveHeadPos()
-// {
-//   savePilotsHeadX = refPilotsHeadX;
-//   savePilotsHeadY = refPilotsHeadY;
-//   savePilotsHeadZ = refPilotsHeadZ;
-//   savePilotsHeadPsi = refPilotsHeadPsi;
-//   savePilotsHeadThe = refPilotsHeadThe;
-//   savePilotsHeadPhi = refPilotsHeadPhi;
-// }
-
-// void restoreHeadPos()
-// {
-//   refPilotsHeadX = savePilotsHeadX;
-//   refPilotsHeadY = savePilotsHeadY;
-//   refPilotsHeadZ = savePilotsHeadZ;
-//   refPilotsHeadPsi = savePilotsHeadPsi;
-//   refPilotsHeadThe = savePilotsHeadThe;
-//   refPilotsHeadPhi = savePilotsHeadPhi;
-//   zeroPilotsHeadPsi = refPilotsHeadPsi;
-//   zeroPilotsHeadThe = refPilotsHeadThe;
-// }
-
-float roundangle(float angle)
-{
-  return (1000.0 * round(0.001 * angle));
 }
 
 void setup()
@@ -201,14 +141,6 @@ void setup()
   XP.registerDataRef(F("sim/time/ground_speed"), XPL_READWRITE, 100, 0, &refGroundSpeed);
   XP.registerDataRef(F("sim/cockpit2/controls/parking_brake_ratio"), XPL_WRITE, 100, 0, &refParkingBrakeRatio);
   XP.registerDataRef(F("sim/cockpit2/controls/parking_brake_ratio"), XPL_READ, 100, 0, &readParkingBrakeRatio);
-  // XP.registerDataRef(F("sim/graphics/view/pilots_head_x"), XPL_READ, 50, 0, &refPilotsHeadX);
-  // XP.registerDataRef(F("sim/graphics/view/pilots_head_y"), XPL_READ, 50, 0, &refPilotsHeadY);
-  // XP.registerDataRef(F("sim/graphics/view/pilots_head_z"), XPL_READ, 50, 0, &refPilotsHeadZ);
-  // XP.registerDataRef(F("sim/graphics/view/pilots_head_phi"), XPL_READ, 50, 0, &refPilotsHeadPhi);
-  XP.registerDataRef(F("sim/graphics/view/pilots_head_psi"), XPL_WRITE, 50, 0, &refPilotsHeadPsi);
-  XP.registerDataRef(F("sim/graphics/view/pilots_head_the"), XPL_WRITE, 50, 0, &refPilotsHeadThe);
-  XP.registerDataRef(F("sim/graphics/view/pilots_head_psi"), XPL_READ, 50, 0, &readPilotsHeadPsi);
-  XP.registerDataRef(F("sim/graphics/view/pilots_head_the"), XPL_READ, 50, 0, &readPilotsHeadThe);
 
   // register commands
   cmdSpeedBrakeUp = XP.registerCommand(F("sim/flight_controls/speed_brakes_up_one"));
@@ -258,10 +190,12 @@ void setup()
   stickY.calibrate();
 
   // Set Range Values
-  Joystick.setXAxisRange(0, 4095);
-  Joystick.setYAxisRange(0, 4095);
+  Joystick.setXAxisRange(-4095, 4095);
+  Joystick.setYAxisRange(-4095, 4095);
   Joystick.setRxAxisRange(0, 4095);
   Joystick.setRyAxisRange(0, 4095);
+  Joystick.setThrottleRange(0, 4095);
+  Joystick.setRudderRange(0, 4095);
   Joystick.begin(false);
 }
 
@@ -293,6 +227,7 @@ void loop()
   {
     refParkingBrakeRatio = 1.0;
   }
+
   // speed brake up
   if (butSpeedBrakeUp.pressed())
   {
@@ -303,11 +238,13 @@ void loop()
   {
     XP.commandTrigger(cmdSpeedBrakeDown);
   }
+
   // pause
   if (butPause.pressed())
   {
     XP.commandTrigger(cmdPause);
   }
+
   // warp
   if (butWarp.pressed())
   {
@@ -315,75 +252,36 @@ void loop()
     refGroundSpeed = (modeWarp == warpFast) ? 16 : 1;
   }
 
-  // handle view change
-  switch (viewChange)
+  // view modes
+  if (butView.pressed())
   {
-  default:
-    if (butView.pressed())
+    switch (modeView)
     {
-      viewChange = viewSaving;
-      tmrViewChange.getTime();
-      if (modeView == viewCockpit)
-      {
+      case viewCockpit:
+        modeView = viewChase;
         XP.commandTrigger(cmdQuickLook0mem);
-        // saveHeadPos();
-      }
-      else
-      {
-        XP.commandTrigger(cmdQuickLook0);
-      }
-    }
-    break;
-
-  case viewSaving:
-    if (tmrViewChange.elapsed())
-    {
-      viewChange = viewLoading;
-      if (modeView == viewCockpit)
-      {
         XP.commandTrigger(cmdViewChase);
-      }
-      else
-      {
-        // restoreHeadPos();
-      }
-    }
-    break;
-
-  case viewLoading:
-    if (tmrViewChange.elapsed())
-    {
-      viewChange = viewStable;
-      if (modeView == viewCockpit)
-      {
-        modeView = viewExtern;
-        modeCamera = camTranslation;
-      }
-      else
-      {
+        break;
+      default:
         modeView = viewCockpit;
-        modeCamera = camStandard;
-      }
+        XP.commandTrigger(cmdViewDefault);
+        XP.commandTrigger(cmdQuickLook0);
     }
-    break;
   }
 
   // camera modes
   if (encZoom.pressed())
   {
-    if (modeView == viewCockpit)
+    switch (modeCamera)
     {
-      if (modeCamera == camTranslation)
-      {
-        modeCamera = camStandard;
-        zeroPilotsHeadPsi = roundangle(readPilotsHeadPsi);
-        zeroPilotsHeadThe = roundangle(readPilotsHeadThe);
-        // saveHeadPos();
-      }
-      else
-      {
+      case camStandard:
         modeCamera = camTranslation;
-      }
+        break;
+      case camTranslation:
+        modeCamera = camRotation;
+        break;
+      default:
+        modeCamera = camStandard;
     }
   }
 
@@ -391,17 +289,7 @@ void loop()
   {
     if (modeView == viewCockpit)
     {
-      if (modeCamera == camRotation)
-      {
-        modeCamera = camStandard;
-        zeroPilotsHeadPsi = roundangle(readPilotsHeadPsi);
-        zeroPilotsHeadThe = roundangle(readPilotsHeadThe);
-        // saveHeadPos();
-      }
-      else
-      {
-        modeCamera = camRotation;
-      }
+      XP.commandTrigger(cmdQuickLook0);
     }
   }
 
@@ -422,8 +310,8 @@ void loop()
     switch (modeCamera)
     {
     default:
-      refPilotsHeadPsi = roundangle(zeroPilotsHeadPsi - (135.0 * stickX.value()));
-      refPilotsHeadThe = roundangle(zeroPilotsHeadThe + (60.0 * stickY.value()));
+      Joystick.setXAxis(4095 * stickX.value());
+      Joystick.setYAxis(4095 * stickY.value());
       break;
     case camTranslation:
       XP.commandTrigger(classifyValue(stickX.value(),
@@ -432,6 +320,8 @@ void loop()
       XP.commandTrigger(classifyValue(stickY.value(),
                                       cmdDownFast, cmdDown, cmdDownSlow,
                                       cmdUpSlow, cmdUp, cmdUpFast));
+      Joystick.setXAxis(0);
+      Joystick.setYAxis(0);
       break;
     case camRotation:
       XP.commandTrigger(classifyValue(stickX.value(),
@@ -440,6 +330,8 @@ void loop()
       XP.commandTrigger(classifyValue(stickY.value(),
                                       cmdRotDownFast, cmdRotDown, cmdRotDownSlow,
                                       cmdRotUpSlow, cmdRotUp, cmdRotUpFast));
+      Joystick.setXAxis(0);
+      Joystick.setYAxis(0);
       break;
     }
   }
@@ -470,41 +362,6 @@ void loop()
     break;
   }
 
-    // if (modeView == viewCockpit)
-    // {
-    //   if (modeCamera == camTranslation)
-    //   {
-    //     if (encZoom.up())
-    //     {
-    //       XP.commandTrigger(cmdForward);
-    //       // refPilotsHeadZ -= 0.01;
-    //     }
-    //     if (encZoom.down())
-    //     {
-    //       XP.commandTrigger(cmdBackward);
-    //       // refPilotsHeadZ += 0.01;
-    //     }
-    //     leds.set(LED_CAMERA, ledOn);
-    //     refPilotsHeadX -= 0.0005 * stickX.value();
-    //     refPilotsHeadY += 0.0005 * stickY.value();
-    //   }
-    //   else
-    //   {
-    //     if (modeMove == camAbsolute)
-    //     {
-    //       leds.set(LED_CAMERA, ledOff);
-    //       refPilotsHeadPsi = -135 * stickX.value();
-    //       refPilotsHeadThe = 60 * stickY.value();
-    //     }
-    //     else
-    //     {
-    //       leds.set(LED_CAMERA, ledMedium);
-    //       refPilotsHeadPsi = -135 * stickX.value();
-    //       refPilotsHeadThe += 0.5 * stickY.value();
-    //     }
-    //   }
-    // }
-
   // Joysticks
   if (tmrSlider.elapsed())
   { // sliders
@@ -512,22 +369,14 @@ void loop()
     sliderRight.handle();
     if (swMode.on())
     {
-      Joystick.setXAxis(4095 * sliderLeft.value());
-      Joystick.setYAxis(4095 * sliderRight.value());
-    }
-    else
-    {
       Joystick.setRxAxis(4095 * sliderLeft.value());
       Joystick.setRyAxis(4095 * sliderRight.value());
     }
+    else
+    {
+      Joystick.setRudder(4095 * sliderLeft.value());
+      Joystick.setThrottle(4095 * sliderRight.value());
+    }
     Joystick.sendState();
   }
-
-  // // send cycle time
-  // if (tmrMain.elapsed())
-  // {
-  //   char tmp[16];
-  //   sprintf(tmp, " %ld Cycles/s", tmrMain.count());
-  //   XP.sendDebugMessage(tmp);
-  // }
 }
