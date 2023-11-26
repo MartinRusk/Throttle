@@ -82,12 +82,17 @@ int cmdRotUpSlow;
 int cmdRotDown;
 int cmdRotDownFast;
 int cmdRotDownSlow;
+int cmdPopupPFD;
+int cmdPopupMFD;
 
 int cmdQuickLook0;
 int cmdQuickLook0mem;
 
 Timer tmrThumbstick(50);
 Timer tmrSlider(10);
+
+Timer tmrView(1000);
+Timer tmrZoom(1000);
 
 enum modeCamera_t
 {
@@ -184,6 +189,8 @@ void setup()
   cmdRotUp = XP.registerCommand(F("sim/general/rot_up"));
   cmdRotUpSlow = XP.registerCommand(F("sim/general/rot_up_slow"));
   cmdRotUpFast = XP.registerCommand(F("sim/general/rot_up_fast"));
+  cmdPopupPFD =  XP.registerCommand(F("sim/GPS/g1000n1_popup"));
+  cmdPopupMFD =  XP.registerCommand(F("sim/GPS/g1000n3_popup"));
 
   // calibrate stick
   stickX.calibrate();
@@ -255,8 +262,21 @@ void loop()
   // view modes
   if (butView.pressed())
   {
-    switch (modeView)
+    tmrView.getTime();
+  }
+
+  if (butView.released())
+  {
+    if (tmrView.elapsed() && (modeView == viewCockpit))
     {
+      XP.commandTrigger(cmdQuickLook0);
+      XP.commandTrigger(cmdPopupPFD);
+      XP.commandTrigger(cmdPopupMFD);
+    }
+    else
+    {
+      switch (modeView)
+      {
       case viewCockpit:
         modeView = viewChase;
         XP.commandTrigger(cmdQuickLook0mem);
@@ -266,19 +286,29 @@ void loop()
         modeView = viewCockpit;
         XP.commandTrigger(cmdViewDefault);
         XP.commandTrigger(cmdQuickLook0);
+      }
     }
   }
 
   // camera modes
   if (encZoom.pressed())
   {
+    tmrZoom.getTime();
+  }
+
+  if (encZoom.released())
+  {
     switch (modeCamera)
     {
       case camStandard:
-        modeCamera = camTranslation;
-        break;
-      case camTranslation:
-        modeCamera = camRotation;
+        if (tmrZoom.elapsed())
+        {
+          modeCamera = camRotation;
+        }
+        else
+        {
+          modeCamera = camTranslation;
+        }
         break;
       default:
         modeCamera = camStandard;
@@ -291,6 +321,7 @@ void loop()
     {
       XP.commandTrigger(cmdQuickLook0);
     }
+    modeCamera = camStandard;
   }
 
   if (encZoom.up())
